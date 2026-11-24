@@ -1,3 +1,4 @@
+
 'use strict';
 const http=require('http');
 const fs=require('fs');
@@ -7,6 +8,7 @@ const net=require('net');
 const crypto=require('crypto');
 const {WebSocketServer,WebSocket}=require('ws');
 const PORT=Number(process.env.PORT)||3000;
+const PUBLIC_HOSTING=process.env.PUBLIC_HOSTING==='true'||!!process.env.RAILWAY_ENVIRONMENT;
 const ROOT=__dirname;
 const rooms=new Map();
 const ROOM_LIMIT=12,PLAYER_LIMIT=12,STATE_INTERVAL=85,LOBBY_INTERVAL=3000;
@@ -24,8 +26,9 @@ function roomSize(r){return peers(r).filter(ws=>ws.readyState===WebSocket.OPEN).
 function roomDetails(r){return {id:r.id,name:r.name,mode:r.mode,occupied:!!r.guest,waiting:r.waiting.length,players:roomSize(r),maxPlayers:PLAYER_LIMIT,endsAt:r.endsAt,remainingMinutes:Math.max(0,Math.ceil((r.endsAt-Date.now())/60000)),playing:r.playing,score:r.score,shots:r.shots,bots:r.mode==='doubles'?2:0,hostName:r.host.name||'Host',guestName:r.guest?.name||'Waiting for player',queue:r.waiting.map((w,i)=>({name:w.name||'Player',position:i+1}))};}
 function listRooms(){return [...rooms.values()].filter(r=>r.host.readyState===WebSocket.OPEN&&r.endsAt>Date.now()).map(roomDetails);}
 const server=http.createServer((req,res)=>{
-  if(!privateIp(req.socket.remoteAddress)){res.writeHead(403);return res.end('LAN-only access');}
+  if(!PUBLIC_HOSTING&&!privateIp(req.socket.remoteAddress)){res.writeHead(403);return res.end('LAN-only access');}
   const url=new URL(req.url,'http://localhost');
+  if(url.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});return res.end(JSON.stringify({status:'ok',rooms:rooms.size}));}
   if(url.pathname==='/api/rooms'){res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});return res.end(JSON.stringify({rooms:listRooms()}));}
   const routes={'/':'index.html','/index.html':'index.html','/vendor/three.module.js':'node_modules/three/build/three.module.js'};
   const file=routes[url.pathname]||url.pathname.replace(/^\//,'');
@@ -46,7 +49,7 @@ function nextGuest(r){while(r.waiting.length){const ix=crypto.randomInt(r.waitin
 function expireRoom(r){if(rooms.get(r.id)!==r)return;rooms.delete(r.id);for(const ws of peers(r)){send(ws,{type:'room_expired',message:'Open Play session has ended.'});ws.close(4002,'Session ended');}r.waiting=[];r.guest=null;}
 const wss=new WebSocketServer({server,path:'/ws',maxPayload:4096,perMessageDeflate:false,clientTracking:true});
 wss.on('connection',(ws,request)=>{
-  if(!privateIp(request.socket.remoteAddress)){ws.close(1008,'LAN-only');return;}
+  if(!PUBLIC_HOSTING&&!privateIp(request.socket.remoteAddress)){ws.close(1008,'LAN-only');return;}
   const origin=request.headers.origin;
   if(origin){try{const u=new URL(origin);if(u.host!==request.headers.host){ws.close(1008,'Invalid origin');return}}catch{ws.close(1008,'Invalid origin');return}}
   const params=new URL(request.url,'http://localhost').searchParams;
@@ -106,7 +109,7 @@ wss.on('connection',(ws,request)=>{
 });
 setInterval(()=>{const now=Date.now();for(const r of rooms.values()){if(r.endsAt<=now&&!r.playing)expireRoom(r);else if(r.endsAt<=now&&r.playing&&!r.endingWarned){r.endingWarned=true;for(const ws of peers(r))send(ws,{type:'room_ending',message:'Session time reached. This is the last game.'});}else if(now-r.lastLobby>=LOBBY_INTERVAL){r.lastLobby=now;lobby(r);}}for(const ws of wss.clients){if(!ws.isAlive){ws.terminate();continue;}ws.isAlive=false;ws.ping();}},5000).unref();
 server.listen(PORT,'0.0.0.0',()=>{
-  console.log(`SUPER COURT Open Play LAN server: http://localhost:${PORT}`);
+  console.log(`SUPER COURT Open Play ${PUBLIC_HOSTING?'public':'LAN'} server: http://localhost:${PORT}`);
   for(const list of Object.values(os.networkInterfaces()))for(const ni of list||[])if(ni.family==='IPv4'&&!ni.internal&&privateIp(ni.address))console.log(`Wi-Fi / LAN address: http://${ni.address}:${PORT}`);
-  console.log('Named rooms, randomized queues, session timers and rate-limited chat are available on private Wi-Fi.');
+  console.log(`Named rooms, randomized queues, session timers and rate-limited chat available (${PUBLIC_HOSTING?'public hosting':'private Wi-Fi'}).`);
 });
