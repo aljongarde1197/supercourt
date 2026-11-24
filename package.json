@@ -1,0 +1,8 @@
+{
+  "name":"courtside-lan-pickleball",
+  "version":"1.0.0",
+  "private":true,
+  "description":"Browser 3D pickleball with same-Wi-Fi local multiplayer",
+  "scripts":{"start":"node server.js"},
+  "dependencies":{"three":"0.160.1","ws":"^8.18.0"}
+}
