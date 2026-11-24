@@ -10,7 +10,7 @@ const PORT=Number(process.env.PORT)||3000;
 const PUBLIC_HOSTING=process.env.PUBLIC_HOSTING==='true'||!!process.env.RAILWAY_ENVIRONMENT;
 const ROOT=__dirname;
 const rooms=new Map();
-const ROOM_LIMIT=12,PLAYER_LIMIT=12,STATE_INTERVAL=85,LOBBY_INTERVAL=3000;
+const ROOM_LIMIT=12,PLAYER_LIMIT=12,STATE_INTERVAL=40,LOBBY_INTERVAL=3000;
 function privateIp(raw){
   let ip=String(raw||'').replace(/^::ffff:/,'');
   if(ip==='::1'||ip==='127.0.0.1')return true;
